@@ -72,20 +72,14 @@ update action model =
 
     GetReady name ->
       let
-        seed =
-          Maybe.withDefault (Random.initialSeed 0) model.nextSeed
         random =
-          Random.generate (Random.int 60 90) seed
-        delay =
-          fst random
-        newSeed =
-          snd random
+          randomBetween 60 90 model.nextSeed
       in
-        ( { model |
-              events <- model.events ++ [(name ++ " started getting ready")]
-          ,   nextSeed <- Just newSeed
-          }
-        , Effects.task (Task.sleep (toFloat (delay * 1000)) `Task.andThen` (\_ -> Task.succeed (Ready name delay)))
+        ( addEventWithSeed
+            model
+            (name ++ " started getting ready")
+            random.newSeed
+        , delayedEffect (toFloat random.number) (Ready name random.number)
         )
 
     Ready name delay ->
@@ -97,7 +91,7 @@ update action model =
             Effects.none
       in
         ( { model |
-              events <- model.events ++ [(name ++ " spent " ++ (toString delay) ++ " seconds getting ready")]
+              events <- model.events ++ [timedEvent name delay "getting ready"]
           ,   readyCount <- model.readyCount + 1
           }
         , newEffects
@@ -114,20 +108,14 @@ update action model =
 
     GetShoesOn name ->
       let
-        seed =
-          Maybe.withDefault (Random.initialSeed 0) model.nextSeed
         random =
-          Random.generate (Random.int 35 45) seed
-        delay =
-          fst random
-        newSeed =
-          snd random
+          randomBetween 35 45 model.nextSeed
       in
-        ( { model |
-              events <- model.events ++ [(name ++ " started putting on shoes")]
-          ,   nextSeed <- Just newSeed
-          }
-        , Effects.task (Task.sleep (toFloat (delay * 1000)) `Task.andThen` (\_ -> Task.succeed (ShoesOn name delay)))
+        ( addEventWithSeed
+            model
+            (name ++ " started putting on shoes")
+            random.newSeed
+        , delayedEffect (toFloat random.number) (ShoesOn name random.number)
         )
 
     ShoesOn name delay ->
@@ -139,7 +127,8 @@ update action model =
             Effects.none
       in
         ( { model |
-              events <- model.events ++ [(name ++ " spent " ++ (toString delay) ++ " seconds putting on shoes")]
+              events <-
+                model.events ++ [timedEvent name delay "putting on shoes"]
           ,   shoesCount <- model.shoesCount + 1
           }
         , newEffects
@@ -147,7 +136,7 @@ update action model =
 
     Countdown ->
       ( addEvent model "Alarm is counting down."
-      , Effects.task (Task.sleep 60000 `Task.andThen` (\_ -> Task.succeed AlarmOn))
+      , delayedEffect 60 AlarmOn
       )
 
     Exit ->
@@ -161,9 +150,45 @@ update action model =
       )
 
 
+timedEvent : String -> Int -> String -> String
+timedEvent name delay event =
+  name ++ " spent " ++ (toString delay) ++ " seconds " ++ event
+
+
 addEvent : Model -> String -> Model
 addEvent model event =
   {model | events <- model.events ++ [event]}
+
+
+addEventWithSeed : Model -> String -> Seed -> Model
+addEventWithSeed model event seed =
+  { model |
+      events <- model.events ++ [event]
+  ,   nextSeed <- Just seed
+  }
+
+
+randomBetween : Int -> Int -> Maybe Seed -> {number : Int, newSeed : Seed}
+randomBetween low high seed =
+  let
+    currentSeed =
+      Maybe.withDefault (Random.initialSeed 0) seed
+    random =
+      Random.generate (Random.int low high) currentSeed
+    number =
+      fst random
+    newSeed =
+      snd random
+  in
+    {number = number, newSeed = newSeed}
+
+
+delayedEffect : Float -> Action -> Effects Action
+delayedEffect delay action =
+  Effects.task
+    ( Task.sleep (delay * 1000)
+        `Task.andThen` (\_ -> Task.succeed action)
+    )
 
 
 -- VIEW
